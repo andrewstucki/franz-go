@@ -47,15 +47,16 @@ import (
 type ACLBuilder struct {
 	any         []string
 	anyResource bool
-	topics      []string
-	anyTopic    bool
-	groups      []string
-	anyGroup    bool
-	anyCluster  bool
-	txnIDs      []string
-	anyTxn      bool
-	tokens      []string
-	anyToken    bool
+
+	topics     map[ACLPattern][]string
+	anyTopic   bool
+	groups     map[ACLPattern][]string
+	anyGroup   bool
+	anyCluster bool
+	txnIDs     map[ACLPattern][]string
+	anyTxn     bool
+	tokens     map[ACLPattern][]string
+	anyToken   bool
 
 	allow         []string
 	anyAllow      bool
@@ -101,7 +102,12 @@ func (b *ACLBuilder) PrefixUserExcept(except ...string) {
 
 // NewACLs returns a new ACL builder.
 func NewACLs() *ACLBuilder {
-	return new(ACLBuilder)
+	return &ACLBuilder{
+		topics: make(map[ACLPattern][]string),
+		groups: make(map[ACLPattern][]string),
+		txnIDs: make(map[ACLPattern][]string),
+		tokens: make(map[ACLPattern][]string),
+	}
 }
 
 // AnyResource lists & deletes ACLs of any type matching the given names
@@ -127,16 +133,26 @@ func (b *ACLBuilder) AnyResource(name ...string) *ACLBuilder {
 // type ACLs are matched. For creating, if no topics are provided, this
 // function does nothing.
 func (b *ACLBuilder) Topics(t ...string) *ACLBuilder {
-	b.topics = t
 	if len(t) == 0 {
 		b.anyTopic = true
 	}
+	return b.TopicsWithPattern(b.pattern, t...)
+}
+
+// TopicsWithPattern lists/deletes/creates ACLs of resource type "topic" for the given
+// topics along with the pattern used for ACL resource matching..
+//
+// This returns the input pointer.
+func (b *ACLBuilder) TopicsWithPattern(pattern ACLPattern, t ...string) *ACLBuilder {
+	b.topics[pattern] = t
 	return b
 }
 
 // MaybeTopics is the same as Topics, but does not match all topics if none are
 // provided.
-func (b *ACLBuilder) MaybeTopics(t ...string) *ACLBuilder { b.topics = t; return b }
+func (b *ACLBuilder) MaybeTopics(t ...string) *ACLBuilder {
+	return b.TopicsWithPattern(b.pattern, t...)
+}
 
 // Groups lists/deletes/creates ACLs of resource type "group" for the given
 // groups.
@@ -147,16 +163,26 @@ func (b *ACLBuilder) MaybeTopics(t ...string) *ACLBuilder { b.topics = t; return
 // type ACLs are matched. For creating, if no groups are provided, this
 // function does nothing.
 func (b *ACLBuilder) Groups(g ...string) *ACLBuilder {
-	b.groups = g
 	if len(g) == 0 {
 		b.anyGroup = true
 	}
+	return b.GroupsWithPattern(b.pattern, g...)
+}
+
+// GroupsWithPattern lists/deletes/creates ACLs of resource type "group" for the given
+// groups along with the pattern used for ACL resource matching.
+//
+// This returns the input pointer.
+func (b *ACLBuilder) GroupsWithPattern(pattern ACLPattern, g ...string) *ACLBuilder {
+	b.groups[pattern] = g
 	return b
 }
 
 // MaybeGroups is the same as Groups, but does not match all groups if none are
 // provided.
-func (b *ACLBuilder) MaybeGroups(g ...string) *ACLBuilder { b.groups = g; return b }
+func (b *ACLBuilder) MaybeGroups(g ...string) *ACLBuilder {
+	return b.GroupsWithPattern(b.pattern, g...)
+}
 
 // Clusters lists/deletes/creates ACLs of resource type "cluster".
 //
@@ -183,16 +209,26 @@ func (b *ACLBuilder) MaybeClusters(c bool) *ACLBuilder { b.anyCluster = c; retur
 // resource type ACLs matched. For creating, if no IDs are provided, this
 // function does nothing.
 func (b *ACLBuilder) TransactionalIDs(x ...string) *ACLBuilder {
-	b.txnIDs = x
 	if len(x) == 0 {
 		b.anyTxn = true
 	}
+	return b.TransactionalIDsWithPattern(b.pattern, x...)
+}
+
+// TransactionalIDsWithPattern lists/deletes/creates ACLs of resource type
+// "transactional_id" for the given transactional IDs along with the pattern used for ACL resource matching.
+//
+// This returns the input pointer.
+func (b *ACLBuilder) TransactionalIDsWithPattern(pattern ACLPattern, x ...string) *ACLBuilder {
+	b.txnIDs[pattern] = x
 	return b
 }
 
 // MaybeTransactionalIDs is the same as TransactionalIDs, but does not match
 // all transactional ID's if none are provided.
-func (b *ACLBuilder) MaybeTransactionalIDs(x ...string) *ACLBuilder { b.txnIDs = x; return b }
+func (b *ACLBuilder) MaybeTransactionalIDs(x ...string) *ACLBuilder {
+	return b.TransactionalIDsWithPattern(b.pattern, x...)
+}
 
 // DelegationTokens lists/deletes/creates ACLs of resource type
 // "delegation_token" for the given delegation tokens.
@@ -203,16 +239,30 @@ func (b *ACLBuilder) MaybeTransactionalIDs(x ...string) *ACLBuilder { b.txnIDs =
 // "delegation_token" resource type ACLs are matched. For creating, if no
 // tokens are provided, this function does nothing.
 func (b *ACLBuilder) DelegationTokens(t ...string) *ACLBuilder {
-	b.tokens = t
 	if len(t) == 0 {
 		b.anyToken = true
 	}
+	return b.DelegationTokensWithPattern(b.pattern, t...)
+}
+
+// DelegationTokensWithPattern lists/deletes/creates ACLs of resource type
+// "delegation_token" for the given delegation tokens along with the pattern used for ACL resource matching..
+//
+// This returns the input pointer.
+//
+// For listing or deleting, if this is provided no tokens, all
+// "delegation_token" resource type ACLs are matched. For creating, if no
+// tokens are provided, this function does nothing.
+func (b *ACLBuilder) DelegationTokensWithPattern(pattern ACLPattern, t ...string) *ACLBuilder {
+	b.tokens[pattern] = t
 	return b
 }
 
 // MaybeDelegationTokens is the same as DelegationTokens, but does not match
 // all tokens if none are provided.
-func (b *ACLBuilder) MaybeDelegationTokens(t ...string) *ACLBuilder { b.tokens = t; return b }
+func (b *ACLBuilder) MaybeDelegationTokens(t ...string) *ACLBuilder {
+	return b.DelegationTokensWithPattern(b.pattern, t...)
+}
 
 // Allow sets the principals to add allow permissions for. For listing and
 // deleting, you must also use AllowHosts.
@@ -687,15 +737,15 @@ func (cl *Client) CreateACLs(ctx context.Context, b *ACLBuilder) (CreateACLsResu
 		b.denyHosts = []string{"*"}
 	}
 
-	var clusters []string
+	clusters := make(map[ACLPattern][]string)
 	if b.anyCluster {
-		clusters = []string{"kafka-cluster"}
+		clusters[b.pattern] = []string{"kafka-cluster"}
 	}
 
 	req := kmsg.NewPtrCreateACLsRequest()
 	for _, typeNames := range []struct {
 		t     kmsg.ACLResourceType
-		names []string
+		names map[ACLPattern][]string
 	}{
 		{kmsg.ACLResourceTypeTopic, b.topics},
 		{kmsg.ACLResourceTypeGroup, b.groups},
@@ -703,27 +753,29 @@ func (cl *Client) CreateACLs(ctx context.Context, b *ACLBuilder) (CreateACLsResu
 		{kmsg.ACLResourceTypeTransactionalId, b.txnIDs},
 		{kmsg.ACLResourceTypeDelegationToken, b.tokens},
 	} {
-		for _, name := range typeNames.names {
-			for _, op := range b.ops {
-				for _, perm := range []struct {
-					principals []string
-					hosts      []string
-					permType   kmsg.ACLPermissionType
-				}{
-					{b.allow, b.allowHosts, kmsg.ACLPermissionTypeAllow},
-					{b.deny, b.denyHosts, kmsg.ACLPermissionTypeDeny},
-				} {
-					for _, principal := range perm.principals {
-						for _, host := range perm.hosts {
-							c := kmsg.NewCreateACLsRequestCreation()
-							c.ResourceType = typeNames.t
-							c.ResourceName = name
-							c.ResourcePatternType = b.pattern
-							c.Operation = op
-							c.Principal = principal
-							c.Host = host
-							c.PermissionType = perm.permType
-							req.Creations = append(req.Creations, c)
+		for pattern, names := range typeNames.names {
+			for _, name := range names {
+				for _, op := range b.ops {
+					for _, perm := range []struct {
+						principals []string
+						hosts      []string
+						permType   kmsg.ACLPermissionType
+					}{
+						{b.allow, b.allowHosts, kmsg.ACLPermissionTypeAllow},
+						{b.deny, b.denyHosts, kmsg.ACLPermissionTypeDeny},
+					} {
+						for _, principal := range perm.principals {
+							for _, host := range perm.hosts {
+								c := kmsg.NewCreateACLsRequestCreation()
+								c.ResourceType = typeNames.t
+								c.ResourceName = name
+								c.ResourcePatternType = pattern
+								c.Operation = op
+								c.Principal = principal
+								c.Host = host
+								c.PermissionType = perm.permType
+								req.Creations = append(req.Creations, c)
+							}
 						}
 					}
 				}
@@ -1015,98 +1067,105 @@ func createDelDescACL(b *ACLBuilder) ([]kmsg.DeleteACLsRequestFilter, []*kmsg.De
 		b.anyDenyHosts = false
 	}
 
-	var clusters []string
+	clusters := make(map[ACLPattern][]string)
 	if b.anyCluster {
-		clusters = []string{"kafka-cluster"}
+		clusters[b.pattern] = []string{"kafka-cluster"}
 	}
+
+	any := make(map[ACLPattern][]string)
+	any[b.pattern] = b.any
+
 	var deletions []kmsg.DeleteACLsRequestFilter
 	var describes []*kmsg.DescribeACLsRequest
 	for _, typeNames := range []struct {
 		t     kmsg.ACLResourceType
-		names []string
+		names map[ACLPattern][]string
 		any   bool
 	}{
-		{kmsg.ACLResourceTypeAny, b.any, b.anyResource},
+		{kmsg.ACLResourceTypeAny, any, b.anyResource},
 		{kmsg.ACLResourceTypeTopic, b.topics, b.anyTopic},
 		{kmsg.ACLResourceTypeGroup, b.groups, b.anyGroup},
 		{kmsg.ACLResourceTypeCluster, clusters, b.anyCluster},
 		{kmsg.ACLResourceTypeTransactionalId, b.txnIDs, b.anyTxn},
 		{kmsg.ACLResourceTypeDelegationToken, b.tokens, b.anyToken},
 	} {
-		if typeNames.any {
-			typeNames.names = sliceAny
-		}
-		for _, name := range typeNames.names {
-			for _, op := range b.ops {
-				for _, perm := range []struct {
-					principals   []string
-					anyPrincipal bool
-					hosts        []string
-					anyHost      bool
-					permType     kmsg.ACLPermissionType
-				}{
-					{
-						b.allow,
-						b.anyAllow,
-						b.allowHosts,
-						b.anyAllowHosts,
-						kmsg.ACLPermissionTypeAllow,
-					},
-					{
-						b.deny,
-						b.anyDeny,
-						b.denyHosts,
-						b.anyDenyHosts,
-						kmsg.ACLPermissionTypeDeny,
-					},
-					{
-						nil,
-						anyAny,
-						nil,
-						anyAnyHosts,
-						kmsg.ACLPermissionTypeAny,
-					},
-				} {
-					if perm.anyPrincipal {
-						perm.principals = sliceAny
-					}
-					if perm.anyHost {
-						perm.hosts = sliceAny
-					}
-					for _, principal := range perm.principals {
-						for _, host := range perm.hosts {
-							deletion := kmsg.NewDeleteACLsRequestFilter()
-							describe := kmsg.NewPtrDescribeACLsRequest()
+		for pattern, names := range typeNames.names {
+			if typeNames.any {
+				names = sliceAny
+			}
 
-							deletion.ResourceType = typeNames.t
-							describe.ResourceType = typeNames.t
+			for _, name := range names {
+				for _, op := range b.ops {
+					for _, perm := range []struct {
+						principals   []string
+						anyPrincipal bool
+						hosts        []string
+						anyHost      bool
+						permType     kmsg.ACLPermissionType
+					}{
+						{
+							b.allow,
+							b.anyAllow,
+							b.allowHosts,
+							b.anyAllowHosts,
+							kmsg.ACLPermissionTypeAllow,
+						},
+						{
+							b.deny,
+							b.anyDeny,
+							b.denyHosts,
+							b.anyDenyHosts,
+							kmsg.ACLPermissionTypeDeny,
+						},
+						{
+							nil,
+							anyAny,
+							nil,
+							anyAnyHosts,
+							kmsg.ACLPermissionTypeAny,
+						},
+					} {
+						if perm.anyPrincipal {
+							perm.principals = sliceAny
+						}
+						if perm.anyHost {
+							perm.hosts = sliceAny
+						}
+						for _, principal := range perm.principals {
+							for _, host := range perm.hosts {
+								deletion := kmsg.NewDeleteACLsRequestFilter()
+								describe := kmsg.NewPtrDescribeACLsRequest()
 
-							if !typeNames.any {
-								deletion.ResourceName = kmsg.StringPtr(name)
-								describe.ResourceName = kmsg.StringPtr(name)
+								deletion.ResourceType = typeNames.t
+								describe.ResourceType = typeNames.t
+
+								if !typeNames.any {
+									deletion.ResourceName = kmsg.StringPtr(name)
+									describe.ResourceName = kmsg.StringPtr(name)
+								}
+
+								deletion.ResourcePatternType = pattern
+								describe.ResourcePatternType = pattern
+
+								deletion.Operation = op
+								describe.Operation = op
+
+								if !perm.anyPrincipal {
+									deletion.Principal = kmsg.StringPtr(principal)
+									describe.Principal = kmsg.StringPtr(principal)
+								}
+
+								if !perm.anyHost {
+									deletion.Host = kmsg.StringPtr(host)
+									describe.Host = kmsg.StringPtr(host)
+								}
+
+								deletion.PermissionType = perm.permType
+								describe.PermissionType = perm.permType
+
+								deletions = append(deletions, deletion)
+								describes = append(describes, describe)
 							}
-
-							deletion.ResourcePatternType = b.pattern
-							describe.ResourcePatternType = b.pattern
-
-							deletion.Operation = op
-							describe.Operation = op
-
-							if !perm.anyPrincipal {
-								deletion.Principal = kmsg.StringPtr(principal)
-								describe.Principal = kmsg.StringPtr(principal)
-							}
-
-							if !perm.anyHost {
-								deletion.Host = kmsg.StringPtr(host)
-								describe.Host = kmsg.StringPtr(host)
-							}
-
-							deletion.PermissionType = perm.permType
-							describe.PermissionType = perm.permType
-
-							deletions = append(deletions, deletion)
-							describes = append(describes, describe)
 						}
 					}
 				}
