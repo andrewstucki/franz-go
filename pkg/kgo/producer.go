@@ -466,12 +466,12 @@ func (cl *Client) produce(
 		// bufferedRecords addition below, after being removed from
 		// blocked in the goroutine.
 		wait := make(chan struct{})
-		var quit bool
+		var quit atomic.Bool
 		go func() {
 			defer close(wait)
 			p.mu.Lock()
 			calcNums()
-			for !quit && (overMaxRecs || overMaxBytes) {
+			for !quit.Load() && (overMaxRecs || overMaxBytes) {
 				p.c.Wait()
 				calcNums()
 			}
@@ -480,9 +480,7 @@ func (cl *Client) produce(
 		}()
 
 		drainBuffered := func(err error) {
-			p.mu.Lock()
-			quit = true
-			p.mu.Unlock()
+			quit.Store(true)
 			p.c.Broadcast() // wake the goroutine above
 			<-wait
 			p.mu.Unlock() // we wait for the goroutine to exit, then unlock again (since the goroutine leaves the mutex locked)
@@ -1074,14 +1072,14 @@ func (cl *Client) Flush(ctx context.Context) error {
 		}
 	}
 
-	quit := false
+	var quit atomic.Bool
 	done := make(chan struct{})
 	go func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		defer close(done)
 
-		for !quit && p.bufferedRecords+int64(p.blocked.Load()) > 0 {
+		for !quit.Load() && p.bufferedRecords+int64(p.blocked.Load()) > 0 {
 			p.c.Wait()
 		}
 	}()
@@ -1090,9 +1088,7 @@ func (cl *Client) Flush(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		p.mu.Lock()
-		quit = true
-		p.mu.Unlock()
+		quit.Store(true)
 		p.c.Broadcast()
 		return ctx.Err()
 	}
@@ -1101,13 +1097,13 @@ func (cl *Client) Flush(ctx context.Context) error {
 func (p *producer) pause(ctx context.Context) error {
 	p.inflight.Add(1 << 48)
 
-	quit := false
+	var quit atomic.Bool
 	done := make(chan struct{})
 	go func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		defer close(done)
-		for !quit && p.inflight.Load()&((1<<48)-1) != 0 {
+		for !quit.Load() && p.inflight.Load()&((1<<48)-1) != 0 {
 			p.c.Wait()
 		}
 	}()
@@ -1116,9 +1112,7 @@ func (p *producer) pause(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		p.mu.Lock()
-		quit = true
-		p.mu.Unlock()
+		quit.Store(true)
 		p.c.Broadcast()
 		p.resume() // dec our inflight
 		return ctx.Err()
